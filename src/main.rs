@@ -1,15 +1,13 @@
-use std::io;
 use libm::{expf, powf};
 use nalgebra::{DMatrix, Vector2};
 use plotters::prelude::*;
 use ndarray::prelude::*;
-use ndarray_rand::{rand as rand, RandomExt};
-use ndarray_rand::rand::Rng;
-use ndarray_rand::rand_distr::{Uniform, StandardNormal, Normal};
-use ndarray_stats::HistogramExt;
-use ndarray_stats::histogram::{strategies::Sqrt, GridBuilder};
-use noisy_float::types::{N64, n64};
-use poloto::build::{plot};
+//use ndarray_rand::{rand as rand, RandomExt};
+//use ndarray_rand::rand::Rng;
+//use ndarray_rand::rand_distr::{StandardNormal};
+//use ndarray_stats::histogram::{strategies::Sqrt, GridBuilder};
+//use noisy_float::types::{N64, n64};
+//use poloto::build::{plot};
 
 mod plot;
 mod normal;
@@ -105,7 +103,7 @@ fn mean(data: &[f32]) -> Option<f32>{
     Some(data.iter().sum::<f32>()/total as f32)
 }
 
-fn sq_mat_test(side: usize){
+fn _sq_mat_test(side: usize){
     let mat = DMatrix::<f32>::identity(side,side);
     println!("{}", mat.determinant());
 }
@@ -122,9 +120,9 @@ fn mat_mult_test(){
     println!("{}", gauss((vt*mat*v).x, 1.));
 }
 
-fn sampling(mean: f32, std_dev: f32, num_samples: usize) -> Result<(), Box<dyn std::error::Error>>{
+/*fn sampling(mean: f32, std_dev: f32, num_samples: usize) -> Result<(), Box<dyn std::error::Error>>{
 
-    let samples = Array::<f64, _>::random_using((10000,2), StandardNormal, &mut rand::thread_rng());
+    let _samples = Array::<f64, _>::random_using((10000,2), StandardNormal, &mut rand::thread_rng());
     /*let data = samples.mapv(|e| n64(e));
     let grid = GridBuilder::<Sqrt<N64>>::from_array(&data).unwrap().build();
     let histogram = data.histogram(grid);
@@ -132,14 +130,14 @@ fn sampling(mean: f32, std_dev: f32, num_samples: usize) -> Result<(), Box<dyn s
     let data = histogram_matrix.sum_axis(Axis(0));
     let histogram_data: Vec<(f32, f32)> = data.iter().enumerate().map(|(e, i)| (e as f32, *i) ).collect();
 */
-    let file = std::fs::File::create("standard_normal_hist.svg").unwrap();
-    let mut graph = plot("Histogram");
+    let _file = std::fs::File::create("standard_normal_hist.svg").unwrap();
+    let _graph = plot("Histogram");
     //graph.histogram(histogram_data);
     //graph.histogram(histogram_data).xmarker(0).ymarker(0);
     //graph.simple_theme(poloto::upgrade_write(file));
 
     Ok(())
-}
+}*/
 
 fn arr_test(){
     let arr0 = array![[1., 2., 3.], [ 4., 5., 6.]];
@@ -149,21 +147,75 @@ fn arr_test(){
 
 #[cfg(test)]
 mod tests{
+    use ndarray_rand::rand_distr::StandardNormal;
+    use ndarray_rand::{rand, RandomExt};
+    use crate::cluster::{Cluster, ClusterList};
+    use crate::datum::{DataSet, Datum};
     use super::*;
 
     #[test]
     fn test_1(){
-        println!("The mean is {}", mean(vec![1.,2.,3.,4.].as_slice()).unwrap());
+        println!("The mean is {}", mean(&[1.,2.,3.,4.]).unwrap());
         mat_mult_test();
     }
 
-    #[test]
+    /*#[test]
     fn test_sampling(){
         sampling(0., 1., 1000);
-    }
+    }*/
 
     #[test]
     fn ndarray_test(){
         arr_test();
+    }
+
+    /*#[test]
+    pub fn test_data_manager(){
+        let data = Array::<f64, _>::random_using((10,2), StandardNormal, &mut rand::thread_rng());
+        println!("{:#?}", data);
+
+        let dataset = DataSet::new(&data);
+        println!("{:#?}", dataset);
+
+        let indexes = [0, 1, 5, 6, 8];
+
+        let mut clusters = ClusterList::new();
+
+        /*for index in indexes{
+            clusters.create(index, dataset.get(index).unwrap().convert_to_f64())
+        }*/
+
+        for (index,data) in dataset.iter(){
+            clusters.create(*index, data.convert_to_f64().as_slice());
+        }
+
+        println!("{:#?}", clusters);
+
+        for (index, cluster) in clusters.iter_mut().enumerate(){
+            if index == 2{
+                println!("{:#?}",cluster.data_average());
+                cluster.add(index, dataset.get(index).unwrap().convert_to_f64().as_slice());
+                println!("{:#?}",cluster.data_average());
+                /*cluster.remove(index, dataset.get(index).unwrap().convert_to_f64().as_slice());
+                println!("{:#?}",cluster.data_average());*/
+            }
+        }
+
+        println!("{:#?}", clusters);
+
+    }*/
+
+    #[test]
+    pub fn type_test(){
+        let datum_usize: Datum<usize> = Datum::new(&[1, 2, 3]);
+        let datum_i32: Datum<i32> = Datum::new(&[1, 2, 3]);
+        let datum_f32: Datum<f32> = Datum::new(&[1., 2., 3.]);
+        let datum_f64: Datum<f64> = Datum::new(&[1., 2., 3.]);
+
+        /*let mut cluster = Cluster::new(0, datum_usize.usize_to_f64().as_slice());
+        cluster.add(1, datum_i32.convert_to_f64().as_slice());
+        cluster.add(2, datum_f32.convert_to_f64().as_slice());
+        cluster.add(3, datum_f64.coordinates());*/
+
     }
 }

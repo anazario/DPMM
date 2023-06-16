@@ -13,3 +13,5 @@ pub(crate) trait DisplayVec<T: Display> {
 
     fn get_vec(&self) -> &Vec<T>;
 }
+
+pub(crate) trait DataType {}

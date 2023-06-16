@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use ndarray_rand::rand::Rng;
+//use ndarray_rand::rand::Rng;
 use ndarray_rand::{rand as rand, RandomExt};
 use ndarray_rand::rand_distr::{Normal};
 
