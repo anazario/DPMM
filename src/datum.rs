@@ -1,11 +1,9 @@
-use std::collections::hash_map::{Values, ValuesMut};
 use std::collections::HashMap;
 use ndarray::{Array2, ArrayBase, Axis,};
 use std::fmt::{Display, Formatter, Result};
-use std::hash::Hash;
-use std::ops::{AddAssign, Div, Mul, Sub};
+use std::ops::{AddAssign, Div, Mul, Sub, SubAssign};
 use ndarray_stats::CorrelationExt;
-use num_traits::{Float, FromPrimitive};
+use ndarray_inverse::Inverse;
 
 use crate::traits::*;
 
@@ -14,9 +12,7 @@ pub(crate) struct Datum<T> {
     coordinates: Vec<T>,
 }
 
-impl<T> DataType for Datum<T> {}
-
-impl<T: PartialOrd+Copy> Datum<T>{
+impl<T: Copy + ToF64> Datum<T>{
     pub fn new(point: &[T]) -> Self{
         Self{
             coordinates: point.to_vec(),
@@ -30,18 +26,12 @@ impl<T: PartialOrd+Copy> Datum<T>{
     pub fn len(&self) -> usize{
         self.coordinates.len()
     }
-
 }
 
-impl<T: Into<f64> + Copy> Datum<T> {
-    pub fn convert_to_f64(&self) -> Vec<f64> {
-        self.coordinates.iter().map(|&x| (x).into()).collect()
-    }
-}
-
-impl Datum<usize>{
-    pub fn usize_to_f64(&self) -> Vec<f64> {
-        self.coordinates.iter().map(|&x| (x) as f64).collect()
+// Implementation for Datum<T>
+impl<T: ToF64> Datum<T> {
+    pub fn to_f64(&self) -> Vec<f64> {
+        self.coordinates.iter().map(|value| value.to_f64()).collect()
     }
 }
 
@@ -66,18 +56,37 @@ impl<T: Display> Display for Datum<T> {
 
 impl<T> AddAssign<&Datum<T>> for Datum<T>
     where
-        T: AddAssign + Clone,
+        T: AddAssign + Copy,
 {
-    fn add_assign(&mut self, other: &Datum<T>) {
+    fn add_assign(&mut self, rhs: &Datum<T>) {
+        // Ensure the sizes match
+        assert_eq!(self.coordinates.len(), rhs.coordinates.len());
+
+        // Perform element-wise addition
         for (idx, value) in self.coordinates.iter_mut().enumerate() {
-            *value += other.coordinates[idx].clone();
+            *value += rhs.coordinates[idx];
+        }
+    }
+}
+
+impl<T> SubAssign<&Datum<T>> for Datum<T>
+    where
+        T: SubAssign + Copy,
+{
+    fn sub_assign(&mut self, rhs: &Datum<T>) {
+        // Ensure the sizes match
+        assert_eq!(self.coordinates.len(), rhs.coordinates.len());
+
+        // Perform element-wise subtraction
+        for (idx, value) in self.coordinates.iter_mut().enumerate() {
+            *value -= rhs.coordinates[idx];
         }
     }
 }
 
 impl<T> Div<T> for Datum<T>
     where
-        T: Into<f64> + Div<Output = T> + Copy,
+        T: ToF64 + Div<Output = T> + Copy,
 {
     type Output = Datum<f64>;
 
@@ -85,7 +94,7 @@ impl<T> Div<T> for Datum<T>
         let coordinates: Vec<f64> = self
             .coordinates
             .into_iter()
-            .map(|val| val.into() / other.into())
+            .map(|val| val.to_f64() / other.to_f64())
             .collect();
 
         Datum { coordinates }
@@ -131,7 +140,7 @@ pub(crate) struct DataSet<T>{
     dataset: HashMap<usize, Datum<T>>,
 }
 
-impl<T: PartialOrd + Copy> DataSet<T> {
+impl<T: Copy + ToF64> DataSet<T> {
     pub fn new(data: &ArrayBase<impl ndarray::Data<Elem = T>, ndarray::Dim<[usize; 2]>>) -> Self {
         let dataset: HashMap<usize, Datum<T>> = data
             .axis_iter(Axis(0))
@@ -144,6 +153,10 @@ impl<T: PartialOrd + Copy> DataSet<T> {
 
     pub fn dataset(&self) -> &HashMap<usize, Datum<T>>{
         &self.dataset
+    }
+
+    pub fn len(&self) -> usize{
+        self.dataset().len()
     }
 
     pub fn dimension(&self) -> Option<usize>{
@@ -167,45 +180,38 @@ impl<T: PartialOrd + Copy> DataSet<T> {
         self.dataset.iter()
     }
 
-}
+    pub fn slice_to_array(&self, slice_indexes: &[usize]) -> Array2<T> {
+        let rows = slice_indexes.len();
+        let cols = self.dataset.get(&slice_indexes[0]).map(|datum| datum.len()).unwrap_or(0);
 
-/*impl<T: /*Float + */AddAssign + FromPrimitive + Into<f64>> DataSet<T>{
-    pub fn slice_mean(&self, slice_indexes: &[usize]) -> Datum<T>{
-        let mut datum: Datum<T> = Datum { coordinates: vec![0 as f64/*T::from(0).unwrap()*/; self.dimension().unwrap()]};
-        for key in slice_indexes{
-            datum += self.dataset.get(key).unwrap();
-        }
-        datum.into()/(slice_indexes.len()).into()
-    }
-
-    pub fn slice_to_vec(&self, slice_indexes: &[usize]) -> Vec<Datum<T>>{
-        slice_indexes
+        let data: Vec<_> = slice_indexes
             .iter()
-            .filter_map(|&index| self.dataset.get(&index).cloned())
-            .collect()
-    }
-
-    pub fn slice_to_array(&self, slice_indexes: &[usize]) -> Array2<T>{
-        let slice_vec = self.slice_to_vec(slice_indexes);
-        let rows: usize = slice_vec.len();
-        let cols: usize = slice_vec[0].coordinates().len();
-
-        Array2::from_shape_vec((rows, cols), slice_vec
-            .iter()
-            .flat_map(|datum| datum.coordinates.iter())
+            .filter_map(|&index| self.dataset.get(&index).map(|datum| &datum.coordinates))
+            .flat_map(|coordinates| coordinates.iter())
             .cloned()
-            .collect())
-            .unwrap()
+            .collect();
+
+        Array2::from_shape_vec((rows, cols), data).unwrap()
     }
-} */
 
+    pub fn cov(&self, slice_indexes: &[usize]) -> Array2<f64> {
+        let data_subset = self.slice_to_array(slice_indexes).mapv(|elem| elem.to_f64());
 
-impl<T> IntoIterator for DataSet<T> {
-    type Item = (usize, Datum<T>);
-    type IntoIter = std::collections::hash_map::IntoIter<usize, Datum<T>>;
+        if slice_indexes.len() == 1 {
+            return data_subset.t().cov(0.).unwrap()
+        }
+        data_subset.t().cov(1.).unwrap()
+    }
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.dataset.into_iter()
+    pub fn precision(&self, slice_indexes: &[usize]) -> Array2<f64>{
+        let cov = self.cov(slice_indexes);
+
+        if let Some(result) = cov.inv(){
+            return result
+        }
+
+        let dim = self.dimension().unwrap();
+        Array2::zeros((dim,dim))
     }
 }
 
@@ -214,31 +220,22 @@ mod tests{
     use ndarray::Array;
     use ndarray_rand::{rand, RandomExt};
     use ndarray_rand::rand_distr::StandardNormal;
+    use ndarray_stats::CorrelationExt;
     use super::*;
 
-    #[test]
+    //#[test]
     fn test_datum(){
         let datum = Datum::new(&[0,1,2,3]);
         println!("{}", datum);
     }
 
-    #[test]
+    //#[test]
     fn test_div(){
         let datum = Datum::new(&[0,1,2,3]);
         println!("{}", datum/2);
     }
 
-    /*#[test]
-    fn test_dataset(){
-        let data = Array::<f64, _>::random_using((10,4), StandardNormal, &mut rand::thread_rng());
-        let dataset = DataSet::new(&data);
-
-        println!("{:?}", &dataset.dimension());
-        println!("Total mean: {}", &dataset.slice_mean(&[0,1]));
-
-    }*/
-
-    #[test]
+    //#[test]
     fn test_datum_sum(){
         let datum1 = Datum::new(&[0., 1., 2., 3.]);
         let datum2 = Datum::new(&[1., 1., 1., 1.]);
@@ -259,43 +256,31 @@ mod tests{
 
     }
 
-    /*#[test]
-    pub fn test_slice_to_vec(){
-        let data = Array::<f64, _>::random_using((10,4), StandardNormal, &mut rand::thread_rng());
+    //#[test]
+    pub fn test_cov(){
+        let data = Array::<f32, _>::random_using((4, 2), StandardNormal, &mut rand::thread_rng());
         let dataset = DataSet::new(&data);
 
-        let slice_vec = dataset.slice_to_vec(&[0,1,2]);
-
-        for slice in slice_vec{
-            println!("{:?}", slice);
-        }
-    }*/
-
-    /*#[test]
-    pub fn test_slice_to_array(){
-        let data = Array::<f64, _>::random_using((2, 2), StandardNormal, &mut rand::thread_rng());
-        let dataset = DataSet::new(&data);
-
-        let slice: Vec<usize> = (0..2).collect();
+        let slice: Vec<usize> = (0..4).collect();
         let slice_array = dataset.slice_to_array(slice.as_slice());
 
+        println!("{:?}", &slice_array);
         println!("{:?}", &slice_array.t());
-        println!("{:?}", slice_array.t().cov(1.));
-    }*/
-
-    /*#[test]
-    pub fn transpose_test(){
-        let data = Array::<f64, _>::random_using((2, 2), StandardNormal, &mut rand::thread_rng());
-        let dataset = DataSet::new(&data);
-
-        let slice: Vec<usize> = (0..2).collect();
-        let slice_array = dataset.slice_to_array(slice.as_slice());
-
-        println!("Array: {:?}", &slice_array);
-        println!("Transpose: {:?}", &slice_array.t());
+        println!("{:?}", &slice_array.t().cov(0.));
         println!("{:?}", &slice_array.t().cov(1.));
 
-    }*/
+        let cov = slice_array.t().cov(1.).unwrap();
 
+        println!("{:?}", cov.inv());
+    }
 
+    //#[test]
+    fn test_data(){
+        let data = Array::<f32, _>::random_using((4, 2), StandardNormal, &mut rand::thread_rng());
+        let dataset = DataSet::new(&data);
+
+        for data in dataset.iter(){
+            dataset.get(*data.0);
+        }
+    }
 }

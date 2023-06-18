@@ -2,92 +2,15 @@ use libm::{expf, powf};
 use nalgebra::{DMatrix, Vector2};
 use plotters::prelude::*;
 use ndarray::prelude::*;
-//use ndarray_rand::{rand as rand, RandomExt};
-//use ndarray_rand::rand::Rng;
-//use ndarray_rand::rand_distr::{StandardNormal};
-//use ndarray_stats::histogram::{strategies::Sqrt, GridBuilder};
-//use noisy_float::types::{N64, n64};
-//use poloto::build::{plot};
 
 mod plot;
-mod normal;
+mod model;
 mod datum;
 mod cluster;
 mod traits;
 
-/*fn main() {
+fn main() {
     println!("Hello, world!");
-}*/
-
-const OUT_FILE_NAME: &'static str = "normal-dist.png";
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let root = BitMapBackend::new(OUT_FILE_NAME, (1024, 768)).into_drawing_area();
-
-    root.fill(&WHITE)?;
-
-    let n_events = 10_000;
-
-    let random_points: Vec<(f64, f64)> = {
-
-        let mut distribution: Vec<(f64,f64)> = Vec::new();
-
-        let x_distribution = normal::generate_1d_dataset(0., 0.06, n_events);
-        let y_distribution = normal::generate_1d_dataset(0., 0.2, n_events);
-
-        for index in 0..n_events{
-            distribution.push((*x_distribution.get(index).unwrap(),
-                                     *y_distribution.get(index).unwrap()));
-        }
-
-        distribution
-    };
-
-    /*samples
-        .axis_iter(Axis(0))
-        .map(|sample| {
-            (*sample.to_vec().get(0).unwrap(),
-             *sample.to_vec().get(1).unwrap())
-        })
-        .collect();*/
-
-    let areas = root.split_by_breakpoints([944], [80]);
-
-    let mut x_hist_ctx = ChartBuilder::on(&areas[0])
-        .y_label_area_size(40)
-        .build_cartesian_2d((-1.0..1.0).step(0.01).use_round().into_segmented(), 0..250)?;
-    let mut y_hist_ctx = ChartBuilder::on(&areas[3])
-        .x_label_area_size(40)
-        .build_cartesian_2d(0..250, (-1.0..1.0).step(0.01).use_round())?;
-    let mut scatter_ctx = ChartBuilder::on(&areas[2])
-        .x_label_area_size(40)
-        .y_label_area_size(40)
-        .build_cartesian_2d(-1f64..1f64, -1f64..1f64)?;
-    scatter_ctx
-        .configure_mesh()
-        .disable_x_mesh()
-        .disable_y_mesh()
-        .draw()?;
-    scatter_ctx.draw_series(
-        random_points
-            .iter()
-            .map(|(x, y)| Circle::new((*x, *y), 2, GREEN.filled())),
-    )?;
-    let x_hist = Histogram::vertical(&x_hist_ctx)
-        .style(GREEN.filled())
-        .margin(0)
-        .data(random_points.iter().map(|(x, _)| (*x, 1)));
-    let y_hist = Histogram::horizontal(&y_hist_ctx)
-        .style(GREEN.filled())
-        .margin(0)
-        .data(random_points.iter().map(|(_, y)| (*y, 1)));
-    x_hist_ctx.draw_series(x_hist)?;
-    y_hist_ctx.draw_series(y_hist)?;
-
-    // To avoid the IO failure being ignored silently, we manually call the present function
-    root.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
-    println!("Result has been saved to {}", OUT_FILE_NAME);
-
-    Ok(())
 }
 
 fn gauss(mean: f32, variance: f32) -> f32{
@@ -149,7 +72,8 @@ fn arr_test(){
 mod tests{
     use ndarray_rand::rand_distr::StandardNormal;
     use ndarray_rand::{rand, RandomExt};
-    use crate::cluster::{Cluster, ClusterList};
+    use crate::cluster::Cluster;
+    //use crate::cluster::{Cluster, ClusterList};
     use crate::datum::{DataSet, Datum};
     use super::*;
 
@@ -205,17 +129,17 @@ mod tests{
 
     }*/
 
-    #[test]
+    /*#[test]
     pub fn type_test(){
         let datum_usize: Datum<usize> = Datum::new(&[1, 2, 3]);
         let datum_i32: Datum<i32> = Datum::new(&[1, 2, 3]);
         let datum_f32: Datum<f32> = Datum::new(&[1., 2., 3.]);
         let datum_f64: Datum<f64> = Datum::new(&[1., 2., 3.]);
 
-        /*let mut cluster = Cluster::new(0, datum_usize.usize_to_f64().as_slice());
+        let mut cluster = Cluster::new(0, datum_usize.usize_to_f64().as_slice());
         cluster.add(1, datum_i32.convert_to_f64().as_slice());
         cluster.add(2, datum_f32.convert_to_f64().as_slice());
-        cluster.add(3, datum_f64.coordinates());*/
+        cluster.add(3, datum_f64.coordinates());
 
-    }
+    }*/
 }
