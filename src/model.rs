@@ -1,15 +1,137 @@
+use std::ops::{AddAssign, SubAssign};
 use libm::{exp, pow};
-use ndarray::Data;
 use ndarray::prelude::*;
 use ndarray_rand::{rand as rand, RandomExt};
 use ndarray_rand::rand_distr::{Normal};
 use ndarray_inverse::Inverse;
 use hdf5::File;
-use crate::datum::DataSet;
+use num_traits::Float;
+use crate::cluster::{Cluster, ClusterList};
+use crate::datum::{DataSet, Datum};
 use crate::traits::ToF64;
 
-pub fn gauss(mean: f64, variance: f64) -> f64{
-    exp(-(pow(mean, 2.)/(2.*pow(variance, 2.))))
+pub(crate) struct Model<T>{
+    alpha: T,
+    mean: Array1<T>,
+    variance: Array2<T>,
+    error: Array2<T>
+}
+
+impl<T: Float> Model<T>{
+    pub fn new(alpha: T, mean: Array1<T>, variance: Array2<T>, error: Array2<T>) -> Self{
+        Self{
+            alpha,
+            mean,
+            variance,
+            error,
+        }
+    }
+
+    pub fn alpha(&self) -> T{
+        self.alpha
+    }
+
+    pub fn mean(&self) -> &Array1<T>{
+        &self.mean
+    }
+
+    pub fn variance(&self) -> &Array2<T>{
+        &self.variance
+    }
+
+    pub fn error(&self) -> &Array2<T>{
+        &self.error
+    }
+
+    pub fn prior_pd(&self, datum: Datum<impl ToF64 + Copy>) -> f64{
+        let datum = datum.to_f64();
+        let mean = &datum - &self.mean.mapv(|e| e.to_f64().unwrap());
+        let variance = self.variance.mapv(|e| e.to_f64().unwrap());
+        let error = self.error.mapv(|e| e.to_f64().unwrap());
+
+        gauss(&mean, &(variance + error))
+    }
+}
+
+pub(crate) struct DPMM<T> {
+    dataset: DataSet<T>,
+    parameters: Model<f64>,
+    clusters: ClusterList<T>,
+}
+
+impl<T> DPMM<T>
+    where
+        T: PartialOrd + Copy + ToF64 + AddAssign + SubAssign
+{
+    pub fn new(dataset: DataSet<T>, parameters: Model<f64>) -> Self{
+        Self{
+            dataset,
+            parameters,
+            clusters: ClusterList::new(),
+        }
+    }
+
+    pub fn dataset(&self) -> &DataSet<T>{
+        &self.dataset
+    }
+
+    pub fn clusters(&self) -> &ClusterList<T>{
+        &self.clusters
+    }
+
+    pub fn update_clusters(&mut self){
+
+        for cluster in self.clusters.iter_mut(){
+            cluster.set_covariance(self.dataset.cov(cluster.data_index()));
+        }
+    }
+
+    fn posterior_pd(&self, datum: &Datum<T>, cluster: &Cluster<T>){
+
+    }
+}
+
+fn gauss(mean: &Array1<f64>, variance: &Array2<f64>) -> f64 {
+
+    let dim = mean.len();
+    let mean_t = mean.t();
+    let precision: Array2<f64> = match variance.inv(){
+        Some(precision) => precision,
+        None => Array2::zeros((dim, dim)),
+    };
+
+    exp(-mean_t.dot(&precision.dot(mean))/2 as f64)
+}
+
+pub fn posterior_pd(nk: f64, yk: &Array1<f64>, tk: &Array2<f64>,
+                    mu0: &Array1<f64>, t0: &Array2<f64>, var_err: &Array2<f64>) -> f64{
+
+    let dim = yk.len();
+
+    let nk_tk = nk * tk;
+    let den: Array2<f64> = match (&nk_tk + t0).inv() {
+        Some(den) => den,
+        None => Array2::zeros((dim, dim)),
+    };
+    println!("denominator: {:#?}", &den);
+
+    let num: Array1<f64> = (yk.dot( &nk_tk)) + (mu0.dot(t0));
+    println!("{:#?}", &num);
+
+    let mean = &num.dot(&den);
+    println!("{:#?}", mean);
+
+    let variance = &den + var_err;
+    let precision = variance.inv().unwrap();
+    println!("var_err: {:#?}", var_err);
+    println!("variance: {:#?}", &variance);
+
+    let mean_t = mean.t();
+
+    println!("{:#?}", mean_t.dot(&precision.dot(mean)));
+
+    //gauss(mean_t.dot(&precision.dot(mean)), 1.)
+    gauss(&mean, &variance)
 }
 
 pub fn generate_1d_dataset(mean: f64, std_dev: f64, events: usize) -> Vec<f64>{
@@ -74,7 +196,7 @@ mod tests {
 
         let alpha = 0.01;
         let mean_zero = 1.*Array::zeros(2);
-        let var_zero = 9.*Array2::eye(2);
+        let var_zero: Array2<f64> = 9.*Array2::eye(2);
         let var_data = 1.*Array2::eye(2);
 
         println!("{:#?}", var_zero);
@@ -92,7 +214,7 @@ mod tests {
         let dataset = DataSet::new(&input_data);
 
         let start = 0;
-        let end = 10;
+        let end = 5;
         for (key, value) in dataset.iter().skip(start).take(end - start) {
             println!("Key: {}, Value: {}", key, value);
         }
@@ -118,17 +240,24 @@ mod tests {
 
                 let prob_member = size.to_f64()/(observations.to_f64() - 1. + alpha);
                 let prob_new = alpha/(observations.to_f64() - 1. + alpha);
+                let precision_zero = var_zero.inv().unwrap();
 
                 let cluster_precision = dataset.precision(cluster.data_index());
-                println!("{:#?}", cluster_precision);
-                println!("{:#?}", cluster);
+                /*println!("{:#?}", cluster_precision);
+                println!("{:#?}", cluster);*/
+
+                let test = &mean_zero*precision_zero;
+                println!("test multiplication: {:#?}", test);
+
+                let mu_p = size.to_f64()*cluster.data_average()*cluster_precision;
+                println!("{:#?}", mu_p);
 
                 if prob_member > prob_new{
                     cluster.add(*index, datum)
                 }
 
-                println!("{}", format!("p(ci| c-i, α): {}, p(new c): {}, total = {}",
-                                       prob_member, prob_new, prob_member+prob_new));
+                /*println!("{}", format!("p(ci| c-i, α): {}, p(new c): {}, total = {}",
+                                       prob_member, prob_new, prob_member+prob_new));*/
 
 
             }
@@ -139,8 +268,8 @@ mod tests {
 
         }
 
-        println!("cluster size after loop: {:#?}", clusters.len());
-        println!("{:#?}", clusters);
+        //println!("cluster size after loop: {:#?}", clusters.len());
+        //println!("{:#?}", clusters);
 
     }
 
@@ -159,5 +288,47 @@ mod tests {
         let dataset = DataSet::new(&input_data);
 
         println!("{}", dataset.len());
+    }
+
+    #[test]
+    fn test_prob(){
+
+        let nk = 2.;
+        let avg: Array1<f64> = Array1::ones(2);
+        println!("average: {:#?}", avg);
+
+        let mean_zero: Array1<f64> = 1.*Array1::ones(2);//Array::zeros(2);
+        println!("mu_0: {:#?}", mean_zero);
+
+        let prec_zero: Array2<f64> = Array::eye(2);
+        println!("t0: {:#?}", prec_zero);
+
+        let prec_cluster: Array2<f64> = 3.*Array2::eye(2);
+        println!("tk: {:#?}", &prec_cluster);
+
+        let var_data = 1.*Array2::eye(2);
+
+        let nk_tk = nk*&prec_cluster;
+        println!("nk_tk: {:#?}", nk_tk);
+
+        let nk_tk_plus_t0 = &nk_tk + &prec_zero;
+        println!("nk_tk_plus_t0: {:#?}", nk_tk_plus_t0);
+
+        let avg_nk_tk = &avg * &nk_tk;
+        println!("avg_nk_tk: {:#?}", avg_nk_tk);
+
+        let ppd = posterior_pd(nk, &avg, &prec_cluster, &mean_zero,
+                               &prec_zero, &var_data);
+
+        println!("probability: {}", ppd);
+
+    }
+
+    #[test]
+    fn gauss_test(){
+        let var = Array2::zeros((2,2));
+        let mean = Array1::ones(2);
+
+        println!("{:#?}", gauss(&mean, &var));
     }
 }

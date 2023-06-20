@@ -1,7 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 use std::ops::{AddAssign, DivAssign, SubAssign};
-use ndarray::Array2;
-use num_traits::ToPrimitive;
+use ndarray::{Array1, Array2, ArrayBase};
 use crate::datum::{DataSet, Datum};
 use crate::traits::*;
 
@@ -20,7 +19,7 @@ impl<T> Cluster<T>
         Self{
             data_index: vec![index],
             data_sum: datum.clone(),
-            covariance: Array2::eye(datum.len()),
+            covariance: Array2::zeros((datum.len(), datum.len())),
         }
     }
 
@@ -28,17 +27,24 @@ impl<T> Cluster<T>
         self.data_index.as_slice()
     }
 
+    pub fn covariance(&self) -> &Array2<f64>{
+        &self.covariance
+    }
+
     pub fn find(&self, index: &usize) -> bool {
         self.data_index.contains(index)
     }
 
-    pub fn data_average(&self) -> Vec<f64> {
-        let vec_avg: Vec<f64> = self.data_sum.coordinates()
-            .iter()
-            .map(|e| e.to_f64()/self.data_index.len() as f64)
-            .collect();
+    pub fn data_average(&self) -> Array1<f64> {
+        let data_average: Array1<f64> = ArrayBase::from_shape_fn(self.data_sum.len(), |index| {
+            self.data_sum.coordinates()[index].to_f64() / self.data_index.len() as f64
+        });
 
-        vec_avg
+        data_average
+    }
+
+    pub fn set_covariance(&mut self, covariance: Array2<f64>){
+        self.covariance = covariance;
     }
 
     pub fn add(&mut self, index: usize, datum: &Datum<T>) {
@@ -114,7 +120,10 @@ impl<T> ClusterList<T>
     }
 
     pub fn observations(&self) -> usize {
-        let observations: usize = self.clusters.iter().map(|cluster| cluster.len()).sum();
+        let observations: usize = self.clusters
+            .iter()
+            .map(|cluster| cluster.len())
+            .sum();
         observations + 1
     }
 
@@ -149,6 +158,13 @@ impl<T> ClusterList<T>
     }
 }
 
+impl<T> FromIterator<Cluster<T>> for ClusterList<T> {
+    fn from_iter<I: IntoIterator<Item = Cluster<T>>>(iter: I) -> Self {
+        let clusters: Vec<Cluster<T>> = iter.into_iter().collect();
+        Self { clusters }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,7 +183,7 @@ mod tests {
 
     }
 
-    //#[test]
+    #[test]
     fn test_average() {
         let mut cluster: Cluster<f32> = Cluster::new(1, &Datum::new(&[2.,3.,4.]));
         println!("{:?}", cluster.data_average());

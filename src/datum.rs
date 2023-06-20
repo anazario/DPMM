@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use ndarray::{Array2, ArrayBase, Axis,};
+use ndarray::{Array1, Array2, ArrayBase, Axis};
 use std::fmt::{Display, Formatter, Result};
 use std::ops::{AddAssign, Div, Mul, Sub, SubAssign};
 use ndarray_stats::CorrelationExt;
@@ -26,12 +26,19 @@ impl<T: Copy + ToF64> Datum<T>{
     pub fn len(&self) -> usize{
         self.coordinates.len()
     }
-}
 
-// Implementation for Datum<T>
-impl<T: ToF64> Datum<T> {
-    pub fn to_f64(&self) -> Vec<f64> {
+    /*pub fn to_f64(&self) -> Vec<f64> {
         self.coordinates.iter().map(|value| value.to_f64()).collect()
+    }*/
+
+    pub fn to_f64(&self) -> Array1<f64> {
+        let f64_values: Vec<f64> = self
+            .coordinates
+            .iter()
+            .map(|value| value.to_f64())
+            .collect();
+
+        Array1::from_vec(f64_values)
     }
 }
 
