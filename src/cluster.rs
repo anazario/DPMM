@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
-use std::ops::{AddAssign, DivAssign, SubAssign};
+use std::ops::{AddAssign, DivAssign, Index, IndexMut, SubAssign};
 use ndarray::{Array1, Array2, ArrayBase};
+use ndarray_inverse::Inverse;
 use crate::datum::{DataSet, Datum};
 use crate::traits::*;
 
@@ -31,11 +32,15 @@ impl<T> Cluster<T>
         &self.covariance
     }
 
+    pub fn precision(&self) -> Option<Array2<f64>>{
+        self.covariance.inv()
+    }
+
     pub fn find(&self, index: &usize) -> bool {
         self.data_index.contains(index)
     }
 
-    pub fn data_average(&self) -> Array1<f64> {
+    pub fn mean(&self) -> Array1<f64> {
         let data_average: Array1<f64> = ArrayBase::from_shape_fn(self.data_sum.len(), |index| {
             self.data_sum.coordinates()[index].to_f64() / self.data_index.len() as f64
         });
@@ -135,8 +140,9 @@ impl<T> ClusterList<T>
         self.clusters.push(Cluster::new(index, datum));
     }
 
-    pub fn remove(&mut self, index: usize, datum: &Datum<T>) {
-        for cluster in self.clusters.iter_mut() {
+    pub fn remove(&mut self, index: usize, datum: &Datum<T>) -> Option<usize>{
+
+        for (cluster_id, cluster) in self.clusters.iter_mut().enumerate() {
             if cluster.find(&index) {
                 cluster.remove(index, datum);
 
@@ -144,13 +150,19 @@ impl<T> ClusterList<T>
                     self.purge();
                 }
 
-                break;
+                return Some(cluster_id);
             }
         }
+
+        None
     }
 
     pub fn purge(&mut self) {
         self.clusters.retain(|cluster| !cluster.data_index.is_empty());
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Cluster<T>> {
+        self.clusters.iter()
     }
 
     pub fn iter_mut(&mut self) -> std::slice::IterMut<Cluster<T>> {
@@ -162,6 +174,20 @@ impl<T> FromIterator<Cluster<T>> for ClusterList<T> {
     fn from_iter<I: IntoIterator<Item = Cluster<T>>>(iter: I) -> Self {
         let clusters: Vec<Cluster<T>> = iter.into_iter().collect();
         Self { clusters }
+    }
+}
+
+impl<T> Index<usize> for ClusterList<T> {
+    type Output = Cluster<T>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.clusters[index]
+    }
+}
+
+impl<T> IndexMut<usize> for ClusterList<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.clusters[index]
     }
 }
 
@@ -186,9 +212,9 @@ mod tests {
     #[test]
     fn test_average() {
         let mut cluster: Cluster<f32> = Cluster::new(1, &Datum::new(&[2.,3.,4.]));
-        println!("{:?}", cluster.data_average());
+        println!("{:?}", cluster.mean());
         cluster.add(45, &Datum::new(&[1.,2.,3.]));
-        println!("{:?}", cluster.data_average());
+        println!("{:?}", cluster.mean());
         println!("cluster indexes: {}", cluster);
 
     }
@@ -212,7 +238,7 @@ mod tests {
         for (index,cluster) in clusters.iter_mut().enumerate() {
             if index == 0{
                 cluster.add(2, &data3);
-                println!("Average: {:#?}", cluster.data_average())
+                println!("Average: {:#?}", cluster.mean())
             }
             println!("{:#?}", cluster);
             cluster.remove(index, &data_vec[index]);
