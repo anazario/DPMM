@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use ndarray::Array2;
 
 pub(crate) trait DisplayVec<T: Display> {
     fn display_vec(&self) -> String {

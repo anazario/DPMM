@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter, Result};
-use std::ops::{AddAssign, DivAssign, Index, IndexMut, SubAssign};
+use std::ops::{AddAssign, Index, IndexMut, SubAssign};
 use ndarray::{Array1, Array2, ArrayBase};
 use ndarray_inverse::Inverse;
 use crate::datum::{DataSet, Datum};
@@ -148,6 +148,7 @@ impl<T> ClusterList<T>
 
                 if cluster.is_empty() {
                     self.purge();
+                    return None;
                 }
 
                 return Some(cluster_id);

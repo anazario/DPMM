@@ -3,14 +3,12 @@ use std::io;
 use std::io::Write;
 use std::iter::Sum;
 use std::ops::{AddAssign, SubAssign};
-use libm::{exp, pow};
+use libm::{exp};
 use ndarray::prelude::*;
-use ndarray_rand::{rand as rand, RandomExt};
-use ndarray_rand::rand_distr::{Normal};
 use ndarray_inverse::Inverse;
 use hdf5::{File, H5Type};
 use ndarray::ScalarOperand;
-use num_traits::{Float, ToPrimitive};
+use num_traits::{Float};
 use crate::cluster::{Cluster, ClusterList};
 use crate::datum::{DataSet, Datum};
 use crate::traits::ToF64;
@@ -65,6 +63,11 @@ impl<T> Model<T>
         gauss(&mean, &(variance + error))
     }
 }
+
+/*enum ClusterDecision{
+    AddToCluster(usize),
+    CreateNew,
+}*/
 
 pub(crate) struct DPMM<T> {
     dataset: DataSet<T>,
@@ -131,7 +134,7 @@ impl<T> DPMM<T>
         /*let start = 0;
         let end = 1000;*/
         for i in 0..iterations {
-            print!("processing iteration {i}");
+            print!("processing iteration {}", i+1);
             io::stdout().flush().unwrap();
             for (index, datum) in self.dataset.iter() {//.skip(start).take(end - start) {
 
@@ -150,7 +153,7 @@ impl<T> DPMM<T>
                     self.clusters[index].set_covariance(new_covariance);
                 };
 
-                //calculate all cluster assignment/ new cluster probabilities
+                //calculate all cluster assignment/new cluster probabilities
                 let observations = self.clusters.observations();
                 let p_create = self.parameters.prior_pd(datum) * alpha/(observations as f64 - 1. + alpha);
                 let p_assign = self.clusters
@@ -160,9 +163,6 @@ impl<T> DPMM<T>
                         self.posterior_pd(datum, cluster)*cluster_assignment
                     })
                     .collect::<Vec<f64>>();
-
-                /*println!("probabilities of cluster assignments: {:#?}", p_assign);
-                println!("probability of new cluster: {:#?}", p_create);*/
 
                 //find cluster with the highest assignment probability
                 let (max_index, max_value) = match p_assign
@@ -259,37 +259,6 @@ mod tests {
             println!("{}", datum);
         }*/
     }
-
-    /*#[test]
-    fn test_model(){
-        let alpha = 0.01;
-        let mean_zero= 1.*Array::zeros(2);
-        let var_zero = 9.*Array2::eye(2);
-        let var_data = 1.*Array2::eye(2);
-
-        let parameters = Model{
-            alpha,
-            mean: mean_zero,
-            variance: var_zero,
-            error: var_data,
-        };
-
-        // Open the HDF5 file
-        let file = File::open("../test/trial_dataset1.h5").expect("Failed to open HDF5 file");
-
-        // Load the dataset "mixed_data" into an ndarray
-        let input_data: Array2<f64> = file
-            .dataset("mixed_data")
-            .expect("Failed to open dataset")
-            .read_2d::<f64>()
-            .expect("Failed to read dataset");
-
-        let dataset = DataSet::new(&input_data);
-
-        let mut dpmm = DPMM::new(dataset, parameters);
-
-        dpmm.solve(100);
-    }*/
 
     //#[test]
     fn test_hdf5(){
